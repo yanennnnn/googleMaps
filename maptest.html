@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.min.css">
+  <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.2.1/css/bootstrap.min.css" integrity="sha384-GJzZqFGwb1QTTN6wy59ffF1BuGJpLSa9DkKMp0DgiMDm4iYMj70gZWKYbI706tWS" crossorigin="anonymous">
+  <title>Document</title>
+  <style>
+    *{
+      padding: 0;
+      margin: 0;
+    }
+    #map{
+        width: 100%;
+        height: 100vh;
+        background-color: gray;
+        z-index: 0;
+        position: relative;
+    }
+    .list{
+      position: absolute;
+      right: 25px;
+      top:30px;
+      width: 300px;
+    }
+    .list ul{
+      overflow-y: auto;
+      max-height: 450px;
+      background-color: rgba(231, 50, 50, 0.7);
+    }
+    ::-webkit-scrollbar {
+      width: 7px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: #f1f1f1; 
+    }
+    
+    ::-webkit-scrollbar-thumb {
+      background: rgb(196, 195, 195); 
+      border-radius:100px;
+    }
+    
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgb(151, 151, 151); 
+  }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <loading :active.sync="isLoading">
+      <template slot="before">I am</template>
+        <template slot="default">
+          <i class="fa fa-circle-o-notch fa-spin  fa-fw"></i>
+        </template>
+        <template slot="after">loading</template>
+    </loading>
+    <div class="container-fulid no-gutters">
+      <div id="map"></div>
+      <div class="list">
+        <div class="d-flex">
+          <button class="btn btn-warning btn-sm mr-1" @click="setFood(true)">more</button>
+          <button class="btn btn-warning btn-sm mr-1" @click="getPrice">
+            價錢 
+            <li v-if="NowPrice === 'low'" class="fa fa-arrow-up"></li>
+            <li v-else-if="NowPrice === 'hight'" class="fa fa-arrow-down"></li>
+          </button>
+          <button class="btn btn-warning btn-sm mr-1 " @click="getRating()">
+            分數
+            <li v-if="NowRating === 'low'" class="fa fa-arrow-up"></li>
+            <li v-else-if="NowRating === 'hight'" class="fa fa-arrow-down"></li>
+          </button>
+        </div>
+        
+        <div v-if="AllResults.length">
+          <ul class="my-1">
+            <li v-for="item in AllResults" class="list-unstyled pb-2 px-2">
+              <a href="#" class="text-decoration-none text-light" @click.prevent="getTargetDetail(item)">{{item.name}}</a>
+            </li>
+          </ul>
+        </div>
+        <div v-else>
+          這區沒東西哦//
+        </div>
+      </div>
+    </div>
+  </div>
+<script
+    src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAQnQX7jMRvt7NdgPMKt-14DZQHSG5_j9A&libraries=places">
+</script>
+<script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+<script src="https://code.jquery.com/jquery-3.3.1.slim.min.js" integrity="sha384-q8i/X+965DzO0rT7abK41JStQIAqVgRVzpbzo5smXKp4YfRvH+8abtTE1Pi6jizo" crossorigin="anonymous"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.14.6/umd/popper.min.js" integrity="sha384-wHAiFfRlMFy6i5SRaxvfOCifBUQy1xHdJ/yoi7FRNXMRBu5WHdZYu1hA6ZOblgut" crossorigin="anonymous"></script>
+<script src="https://stackpath.bootstrapcdn.com/bootstrap/4.2.1/js/bootstrap.min.js" integrity="sha384-B0UglyR+jN6CkvvICOB2joaf5I4l3gm9GU6Hc1og6Ls7i6U/mkkaduKaBhlAXv9k" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/vue/dist/vue.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/vue-loading-overlay@3"></script>
+<link href="https://cdn.jsdelivr.net/npm/vue-loading-overlay@3/dist/vue-loading.css" rel="stylesheet">
+<script>
+  Vue.use(VueLoading);
+  Vue.component('loading', VueLoading)
+  new Vue({
+    el:'#app',
+    data() {
+      return {
+        map: null,
+        lat: 0,
+        lng: 0,
+        panToLat: 0,
+        panToLng: 0,
+        AllResults: [],
+        infowindow: null,
+        NowPrice: '',
+        NowRating: 'hight',
+        isLoading: false,
+      };
+    },
+    mounted() {
+      const getLocation= new Promise((res,rej) => {
+            function success(position){
+              const userPosition = [position.coords.latitude, position.coords.longitude]
+               res(userPosition)   
+            }
+
+            function error(){
+             const  userPosition = [25.041715, 121.5546935]
+              res(userPosition)   
+            }
+        navigator.geolocation.getCurrentPosition(success,error)
+        
+      })
+      getLocation.then((res)=>{
+        this.lat = res[0];
+        this.lng = res[1];
+        this.panToLat = res[0];
+        this.panToLng = res[1];
+        this.initMap();
+        this.setMarker();
+        this.setFood(false);
+      }).catch(() =>{
+        console.log('error');
+      })
+    },
+    methods: {
+      initMap() {
+        this.map = new google.maps.Map(document.getElementById("map"), {
+          center: { lat: this.lat, lng: this.lng },
+          zoom: 15,
+          maxZoom: 20,
+          minZoom: 3,
+          streetViewControl: false,
+          mapTypeControl: false
+        });
+        this.map.addListener('dragend',() => {
+            const center = this.map.getCenter();
+            this.placePanTo(center);
+        });
+      },
+      setMarker() {
+        const marker = new google.maps.Marker({
+          position: { lat: this.lat, lng: this.lng },
+          map: this.map,
+          icon: {
+            path: google.maps.SymbolPath.BACKWARD_CLOSED_ARROW,
+            scale: 7,
+            strokeColor:'green',
+            strokeWeight: 4
+          },
+        });
+        const infowindow = new google.maps.InfoWindow({
+          content:'目前位置'
+        });
+        marker.addListener('click',function(){
+          infowindow.open(map, marker);
+        });
+        infowindow.open(this.map,marker);
+      },
+      setFood(isMore = false,setLat = this.panToLat, setLng = this.panToLng) {
+        this.NowPrice = '';
+        this.NowRating = '';
+        const server = new google.maps.places.PlacesService(this.map)
+        let getResultsData=[];
+        const NearbyRequest = {
+          location: {lat: setLat, lng: setLng},
+          radius: 500,
+          type: ['restaurant']
+        };
+        server.nearbySearch(NearbyRequest, (results, status, pagination) => {
+          if (status === "OK") {
+            if (isMore){
+              if (pagination.hasNextPage) {
+                document.querySelector('.list ul').scrollTop=0;
+                this.getResults(results,getResultsData);
+                pagination.nextPage(); 
+                this.isLoading = true;
+              }else{
+                this.getResults(results, getResultsData);
+                this.AllResults = getResultsData;
+                this.isLoading = false;
+              }
+            }else{
+              this.getResults(results, getResultsData);
+              this.AllResults = getResultsData;
+            }
+          }else{
+            this.AllResults = getResultsData;
+          }
+        });
+      },
+      getResults(res, getResultsData) {
+       return res.forEach((item)=>{
+          const data = {
+            name: item.name,
+            place_id: item.place_id,
+            price_level: item.price_level,
+            rating: item.rating,
+            location:{lat: item.geometry.location.lat(),lng: item.geometry.location.lng()},
+          }
+          getResultsData.push(data);
+        })
+      },
+      setLists(res) {
+        let str ='';
+        res.forEach((item)=>{
+          str+=`
+          <div>${item.name}</div>`
+        })
+      },
+      getTargetDetail(item) {
+        const request = {
+          placeId: item.place_id,
+        };
+        const infowindow = new google.maps.InfoWindow();
+        const service = new google.maps.places.PlacesService(this.map);
+        service.getDetails(request, (place, status) => {
+          if (status === google.maps.places.PlacesServiceStatus.OK){
+            const marker = new google.maps.Marker({
+              map: this.map,
+              position: place.geometry.location
+            });
+            const isOpen = () => {
+              if (place.opening_hours){
+                if (place.opening_hours.isOpen() === true){
+                  return '<span class="text-success">目前營業中</span>'
+                }else{
+                  return '<span class="text-danger">尚未營業中</span>'
+                }
+              }else{
+                return '<span class="text-primary">沒有營業時間</span>'
+              }
+            }
+            infowindow.setContent(
+              `
+              <div>
+                <h3>${ place.name }</h3>
+                <p>地點：${ place.formatted_address }</p>
+                <p>電話：${ place.formatted_phone_number }</p>
+                ${isOpen()}<span class="ml-2">評價：<span class="text-danger">${ place.rating }</span></span>
+                <button
+                    class="btn btn-sm btn-primary"
+                    type="button"
+                    id="${place.place_id}">
+                    最佳路線
+                </button>
+              </div>
+              `
+            );
+            this.setInfowindow(infowindow, marker)
+            marker.addListener("click", () => {
+              this.setInfowindow(infowindow)
+            });
+            infowindow.addListener('domready', e => {
+              let btn = document.getElementById(`${place.place_id}`);
+              btn.addEventListener('click', e => {
+                this.getBesDistance(place)
+              })
+            });
+          }
+        })
+      },
+      setInfowindow(infowindow, marker){
+        if (this.infowindow) this.infowindow.close();
+        infowindow.open(this.map, marker);
+        this.infowindow = infowindow;
+      },
+      placePanTo(latLng){
+       this.map.panTo(latLng,this.map);
+       this.setFood(false,latLng.lat(),latLng.lng());
+       this.panToLat = latLng.lat();
+       this.panToLng = latLng.lng();
+      },
+      getPrice(){
+        document.querySelector('.list ul').scrollTop=0;
+        this.NowRating = '';
+        if (this.NowPrice === '' || this.NowPrice === 'hight') {
+          this.NowPrice = 'low';
+          this.AllResults.sort((a,b) => {
+            return a.price_level - b.price_level
+          })
+        }else{
+          this.NowPrice = 'hight';
+          this.AllResults.sort((a,b) => {
+            return b.price_level - a.price_level
+          })
+        }
+
+      },
+      getRating(){
+        document.querySelector('.list ul').scrollTop=0;
+        this.NowPrice = '';
+        if (this.NowRating === '' || this.NowRating === 'hight') {
+          this.NowRating = 'low';
+          this.AllResults.sort((a,b) => {
+            return a.rating - b.rating
+          })
+        }
+        else{
+          this.NowRating = 'hight';
+          this.AllResults.sort((a,b) => {
+            return b.rating - a.rating
+          })
+        }
+      },
+      getBesDistance(item) {
+        console.log(item)
+        const directionsService = new google.maps.DirectionsService();
+        const directionsDisplay = new google.maps.DirectionsRenderer();
+        directionsDisplay.setMap(this.map);
+        directionsDisplay.setOptions( { suppressMarkers: true } );
+        const request = {
+          origin: { lat: this.lat, lng: this.lng },
+          destination: { lat: item.geometry.location.lat(), lng: item.geometry.location.lng() },
+          travelMode: 'DRIVING'
+        };
+        directionsService.route(request, function (result, status) {
+          if (status == 'OK') {
+              directionsDisplay.setDirections(result);
+          } else {
+              console.log(status);
+          }
+        });
+      },
+    },
+  })
+    
+  </script>
+</body>
+</html>
